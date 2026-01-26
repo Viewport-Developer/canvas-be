@@ -1,0 +1,19 @@
+// Prisma 스키마 파일
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Canvas {
+  id        String   @id @default(uuid())
+  name      String?
+  yjsData   Bytes?   // y.js 문서를 Binary로 저장
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("canvases")
+}
