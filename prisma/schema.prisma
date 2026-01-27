@@ -15,5 +15,61 @@ model Canvas {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // 관계: 캔버스에 속한 도형들
+  paths  Path[]
+  shapes Shape[]
+  texts  Text[]
+
   @@map("canvases")
+}
+
+// 경로(Path) 모델
+model Path {
+  id          String   @id @default(uuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  points      Json     // Point[] 배열을 JSON으로 저장
+  color       String
+  width       Float
+  boundingBox Json     // BoundingBox 객체를 JSON으로 저장
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([canvasId])
+  @@map("paths")
+}
+
+// 도형(Shape) 모델
+model Shape {
+  id          String   @id @default(uuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  type        String   // "rectangle" | "diamond" | "circle"
+  startPoint  Json     // Point 객체를 JSON으로 저장
+  endPoint    Json     // Point 객체를 JSON으로 저장
+  color       String
+  width       Float
+  boundingBox Json     // BoundingBox 객체를 JSON으로 저장
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([canvasId])
+  @@map("shapes")
+}
+
+// 텍스트(Text) 모델
+model Text {
+  id          String   @id @default(uuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  position    Json     // Point 객체를 JSON으로 저장
+  content     String
+  color       String
+  fontSize    Float
+  boundingBox Json     // BoundingBox 객체를 JSON으로 저장
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([canvasId])
+  @@map("texts")
 }
