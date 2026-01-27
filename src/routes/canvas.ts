@@ -107,6 +107,25 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * 캔버스 삭제 함수 (서버 내부에서도 사용 가능)
+ */
+export async function deleteCanvas(canvasId: string): Promise<void> {
+  try {
+    await prisma.canvas.delete({
+      where: { id: canvasId },
+    });
+    console.log(`[Canvas Route] 캔버스 삭제 완료: ${canvasId}`);
+  } catch (error) {
+    // Prisma 오류 처리
+    if ((error as any).code === 'P2025') {
+      console.log(`[Canvas Route] 캔버스를 찾을 수 없음: ${canvasId}`);
+      return; // 이미 삭제된 경우 무시
+    }
+    throw error;
+  }
+}
+
+/**
  * DELETE /api/canvas/:id
  * 캔버스 삭제
  */
@@ -114,9 +133,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
-    await prisma.canvas.delete({
-      where: { id },
-    });
+    await deleteCanvas(id);
     
     res.status(204).send();
   } catch (error) {
@@ -156,6 +173,42 @@ router.get('/', async (req: Request, res: Response) => {
     res.json(canvases);
   } catch (error) {
     console.error('[Canvas Route] GET / 오류:', error);
+    res.status(500).json({
+      error: '서버 오류가 발생했습니다.',
+    });
+  }
+});
+
+/**
+ * GET /api/canvas/:id/shapes
+ * 캔버스의 모든 도형 데이터 조회 (Paths, Shapes, Texts)
+ */
+router.get('/:id/shapes', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const canvas = await prisma.canvas.findUnique({
+      where: { id },
+      include: {
+        paths: true,
+        shapes: true,
+        texts: true,
+      },
+    });
+    
+    if (!canvas) {
+      return res.status(404).json({
+        error: '캔버스를 찾을 수 없습니다.',
+      });
+    }
+    
+    res.json({
+      paths: canvas.paths,
+      shapes: canvas.shapes,
+      texts: canvas.texts,
+    });
+  } catch (error) {
+    console.error('[Canvas Route] GET /:id/shapes 오류:', error);
     res.status(500).json({
       error: '서버 오류가 발생했습니다.',
     });
