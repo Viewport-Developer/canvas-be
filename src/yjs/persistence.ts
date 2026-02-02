@@ -1,5 +1,5 @@
-import * as Y from 'yjs';
-import { prisma } from '../prisma/client';
+import * as Y from "yjs";
+import { prisma } from "../prisma/client";
 
 // Y.js 문서를 데이터베이스에 저장
 export async function saveYjsDoc(canvasId: string, doc: Y.Doc): Promise<void> {
@@ -34,4 +34,3 @@ export async function loadYjsDoc(canvasId: string, doc: Y.Doc): Promise<void> {
   const yjsBinaryArray = new Uint8Array(canvas.yjsData);
   Y.applyUpdate(doc, yjsBinaryArray);
 }
-
