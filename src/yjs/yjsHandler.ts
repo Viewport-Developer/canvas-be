@@ -1,11 +1,8 @@
 import { loadYjsDoc, saveYjsDoc } from "./persistence";
-import { deleteCanvas } from "../services/canvas";
+import { canvasConnections, cancelDeleteTimer, scheduleCanvasDeletion } from "../services/canvas";
 
 // @ts-ignore
 const { setupWSConnection, setPersistence } = require("y-websocket/bin/utils");
-
-// 전체 connection 정보 저장
-const canvasConnections = new Map<string, Set<any>>();
 
 // y-websocket의 문서 생명주기 훅 설정
 setPersistence({
@@ -35,13 +32,12 @@ setPersistence({
     // 최종 상태 저장
     await saveYjsDoc(docName, ydoc);
 
-    // 연결된 클라이언트가 없으면 캔버스 삭제
+    // 연결된 클라이언트가 없으면 60초 후 삭제 예약
     const activeConnections = canvasConnections.get(docName);
     const hasNoConnections = !activeConnections || activeConnections.size === 0;
 
     if (hasNoConnections) {
-      await deleteCanvas(docName);
-      canvasConnections.delete(docName);
+      scheduleCanvasDeletion(docName);
     }
   },
 
@@ -53,6 +49,9 @@ export function handleWebSocketConnection(ws: any, req: any): void {
   // URL에서 캔버스 ID 추출
   const requestUrl = req.url;
   const canvasId = requestUrl.slice(6);
+
+  // 연결이 들어오면 삭제 타이머 취소
+  cancelDeleteTimer(canvasId);
 
   // 연결 추적: 해당 캔버스의 연결 목록에 추가
   if (!canvasConnections.has(canvasId)) {
