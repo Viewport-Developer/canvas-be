@@ -1,5 +1,5 @@
 import { loadYjsDoc, saveYjsDoc } from "./persistence";
-import { canvasConnections, cancelDeleteTimer, scheduleCanvasDeletion } from "../services/canvas";
+import { canvasConnections, cancelDeleteTimer, setDeleteTimer } from "../services/canvas";
 
 // @ts-ignore
 const { setupWSConnection, setPersistence } = require("y-websocket/bin/utils");
@@ -33,11 +33,11 @@ setPersistence({
     await saveYjsDoc(docName, ydoc);
 
     // 연결된 클라이언트가 없으면 60초 후 삭제 예약
-    const activeConnections = canvasConnections.get(docName);
-    const hasNoConnections = !activeConnections || activeConnections.size === 0;
+    const activeConnection = canvasConnections.get(docName);
+    const hasNoConnections = !activeConnection || activeConnection.size === 0;
 
     if (hasNoConnections) {
-      scheduleCanvasDeletion(docName);
+      setDeleteTimer(docName);
     }
   },
 
@@ -58,25 +58,25 @@ export function handleWebSocketConnection(ws: any, req: any): void {
     canvasConnections.set(canvasId, new Set());
   }
 
-  const connectionsForCanvas = canvasConnections.get(canvasId)!;
-  connectionsForCanvas.add(ws);
+  const activeConnection = canvasConnections.get(canvasId)!;
+  activeConnection.add(ws);
 
   // y-websocket으로 Y.js 문서와 WebSocket 연결
   setupWSConnection(ws, req);
 
   // 연결 해제 시 연결 추적에서 제거
   ws.on("close", () => {
-    const activeConnections = canvasConnections.get(canvasId);
-    if (activeConnections) {
-      activeConnections.delete(ws);
+    const activeConnection = canvasConnections.get(canvasId);
+    if (activeConnection) {
+      activeConnection.delete(ws);
     }
   });
 
   // 에러 발생 시 연결 추적에서 제거
   ws.on("error", () => {
-    const activeConnections = canvasConnections.get(canvasId);
-    if (activeConnections) {
-      activeConnections.delete(ws);
+    const activeConnection = canvasConnections.get(canvasId);
+    if (activeConnection) {
+      activeConnection.delete(ws);
     }
   });
 }

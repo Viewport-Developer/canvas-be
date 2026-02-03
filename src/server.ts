@@ -1,6 +1,8 @@
+import "dotenv/config";
 import http from "http";
 import { WebSocketServer } from "ws";
 import { handleWebSocketConnection } from "./yjs/yjsHandler";
+import { connectMongoDB, disconnectMongoDB } from "./mongodb/client";
 
 const PORT = process.env.PORT || 1234;
 
@@ -23,14 +25,21 @@ wss.on("connection", (ws, req) => {
   handleWebSocketConnection(ws, req);
 });
 
-server.listen(PORT, () => {
-  console.log(`서버 실행 중: http://localhost:${PORT}`);
-});
+async function startServer() {
+  await connectMongoDB();
+  server.listen(PORT, () => {
+    console.log(`서버 실행 중: http://localhost:${PORT}`);
+  });
+}
 
-process.on("SIGTERM", () => {
+startServer();
+
+process.on("SIGTERM", async () => {
+  await disconnectMongoDB();
   server.close(() => process.exit(0));
 });
 
-process.on("SIGINT", () => {
+process.on("SIGINT", async () => {
+  await disconnectMongoDB();
   server.close(() => process.exit(0));
 });
