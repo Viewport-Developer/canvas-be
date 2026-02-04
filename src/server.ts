@@ -4,42 +4,55 @@ import { WebSocketServer } from "ws";
 import { handleWebSocketConnection } from "./yjs/yjsHandler";
 import { connectMongoDB, disconnectMongoDB } from "./mongodb/client";
 
-const PORT = process.env.PORT || 1234;
+export function startWorker(workerId: number, port: number) {
+  const server = http.createServer();
+  const wss = new WebSocketServer({ server });
 
-const server = http.createServer();
-const wss = new WebSocketServer({
-  server,
-  // Y.js 동기화 메시지 압축 → 전송량·대역폭 감소, 여러 명 접속 시 지연 완화
-  perMessageDeflate: {
-    zlibDeflateOptions: { chunkSize: 1024 },
-    zlibInflateOptions: { chunkSize: 1024 },
-    clientNoContextTakeover: true,
-    serverNoContextTakeover: true,
-    serverMaxWindowBits: 10,
-    concurrencyLimit: 10,
-    threshold: 256, // 256바이트 미만 메시지는 압축 안 함(CPU 오버헤드 방지)
-  },
-});
+  wss.on("connection", (ws, req) => {
+    const url = req.url || "";
+    const canvasId = url.slice(6);
 
-wss.on("connection", (ws, req) => {
-  handleWebSocketConnection(ws, req);
-});
+    // 마스터 프로세스에 캔버스 등록 알림
+    process.send?.({
+      type: "canvas-registered",
+      canvasId,
+      workerId,
+    });
+    process.send?.({
+      type: "connection-opened",
+      workerId,
+    });
 
-async function startServer() {
-  await connectMongoDB();
-  server.listen(PORT, () => {
-    console.log(`서버 실행 중: http://localhost:${PORT}`);
+    handleWebSocketConnection(ws, req);
+
+    // 연결 해제 시 알림
+    ws.on("close", () => {
+      process.send?.({
+        type: "connection-closed",
+        workerId,
+      });
+    });
+  });
+
+  async function startServer() {
+    await connectMongoDB();
+    server.listen(port, () => {
+      process.send?.({
+        type: "worker-ready",
+        workerId,
+      });
+    });
+  }
+
+  startServer();
+
+  process.on("SIGTERM", async () => {
+    await disconnectMongoDB();
+    server.close(() => process.exit(0));
+  });
+
+  process.on("SIGINT", async () => {
+    await disconnectMongoDB();
+    server.close(() => process.exit(0));
   });
 }
-
-startServer();
-
-process.on("SIGTERM", async () => {
-  await disconnectMongoDB();
-  server.close(() => process.exit(0));
-});
-
-process.on("SIGINT", async () => {
-  await disconnectMongoDB();
-  server.close(() => process.exit(0));
-});
