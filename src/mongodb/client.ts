@@ -1,9 +1,9 @@
 import "dotenv/config";
 import { MongoClient, Db, Collection } from "mongodb";
 
-const DATABASE_URL = process.env.DATABASE_URL || "mongodb://localhost:27017";
-const DATABASE_NAME = process.env.DATABASE_NAME || "canvas_db";
-const COLLECTION_NAME = "canvases";
+const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_NAME = process.env.DATABASE_NAME;
+const COLLECTION_NAME = process.env.DATABASE_COLLECTION;
 
 let readClient: MongoClient | null = null;
 let writeClient: MongoClient | null = null;
@@ -16,22 +16,22 @@ export async function connectMongoDB(): Promise<void> {
   if (readClient && writeClient) return;
 
   // 읽기 전용 클라이언트
-  readClient = new MongoClient(DATABASE_URL, {
+  readClient = new MongoClient(DATABASE_URL!, {
     maxPoolSize: 20,
   });
   await readClient.connect();
   readDb = readClient.db(DATABASE_NAME);
-  readCollection = readDb.collection(COLLECTION_NAME);
+  readCollection = readDb.collection(COLLECTION_NAME!);
 
   // 쓰기 전용 클라이언트
-  writeClient = new MongoClient(DATABASE_URL, {
+  writeClient = new MongoClient(DATABASE_URL!, {
     maxPoolSize: 80,
   });
   await writeClient.connect();
   writeDb = writeClient.db(DATABASE_NAME);
-  writeCollection = writeDb.collection(COLLECTION_NAME);
+  writeCollection = writeDb.collection(COLLECTION_NAME!);
 
-  // 인덱스는 쓰기 클라이언트에서 생성
+  // 인덱스 생성
   await writeCollection.createIndex({ id: 1 }, { unique: true });
 }
 
