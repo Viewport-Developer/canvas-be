@@ -1,11 +1,11 @@
-import { getCollection } from "../mongodb/client";
+import { getWriteCollection } from "../mongodb/client";
 
 export const canvasConnections = new Map<string, Set<any>>();
 
 const canvasDeleteTimers = new Map<string, NodeJS.Timeout>();
 
 export async function deleteCanvas(canvasId: string): Promise<void> {
-  const collection = getCollection();
+  const collection = getWriteCollection();
   await collection.deleteOne({ id: canvasId });
 }
 

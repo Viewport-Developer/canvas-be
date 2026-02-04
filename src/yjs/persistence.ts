@@ -1,9 +1,9 @@
 import * as Y from "yjs";
-import { getCollection } from "../mongodb/client";
+import { getReadCollection, getWriteCollection } from "../mongodb/client";
 
 export async function saveYjsDoc(canvasId: string, doc: Y.Doc) {
   const update = Y.encodeStateAsUpdate(doc);
-  const collection = getCollection();
+  const collection = getWriteCollection();
 
   await collection.updateOne(
     { id: canvasId },
@@ -21,7 +21,7 @@ export async function saveYjsDoc(canvasId: string, doc: Y.Doc) {
 }
 
 export async function loadYjsDoc(canvasId: string, doc: Y.Doc): Promise<void> {
-  const collection = getCollection();
+  const collection = getReadCollection();
   const canvas = await collection.findOne({ id: canvasId });
 
   if (!canvas || !canvas.yjsData) {
