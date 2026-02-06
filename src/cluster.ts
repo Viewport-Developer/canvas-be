@@ -89,6 +89,14 @@ if (cluster.isPrimary) {
   const server = http.createServer();
   const proxy = createProxyServer({});
 
+  // 프록시 에러 처리 (전역 핸들러)
+  proxy.on("error", (err, req, socket) => {
+    console.error("Proxy error:", err.message);
+    if (socket && !socket.destroyed) {
+      socket.destroy();
+    }
+  });
+
   // WebSocket 업그레이드 요청 처리
   server.on("upgrade", (request, socket, head) => {
     const url = request.url || "";
