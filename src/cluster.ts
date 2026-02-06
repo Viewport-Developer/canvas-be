@@ -13,6 +13,8 @@ const canvasToWorker = new Map<string, number>();
 const workerConnections = new Map<number, number>();
 // 워커 ID → 워커 포트 매핑
 const workerPorts = new Map<number, number>();
+// 워커 ID → ready 상태 매핑 (worker-ready 메시지를 받은 워커만 true)
+const workerReady = new Set<number>();
 
 if (cluster.isPrimary) {
   // 워커 프로세스 생성
@@ -48,12 +50,14 @@ if (cluster.isPrimary) {
   // WebSocket 업그레이드 요청 처리
   server.on("upgrade", (request, socket, head) => {
     const url = request.url || "";
-    const canvasId = url.slice(6);
 
-    if (!canvasId) {
+    // URL 파싱: /canvas/{canvasId} 형식 검증
+    const canvasMatch = url.match(/^\/canvas\/(.+)$/);
+    if (!canvasMatch) {
       socket.destroy();
       return;
     }
+    const canvasId = canvasMatch[1];
 
     // 캔버스 ID 기반으로 워커 선택
     let targetWorkerId: number;

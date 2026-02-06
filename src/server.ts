@@ -10,7 +10,14 @@ export function startWorker(workerId: number, port: number) {
 
   wss.on("connection", (ws, req) => {
     const url = req.url || "";
-    const canvasId = url.slice(6);
+
+    // URL 파싱: /canvas/{canvasId} 형식 검증
+    const canvasMatch = url.match(/^\/canvas\/(.+)$/);
+    if (!canvasMatch) {
+      ws.close(1008, "Invalid URL format");
+      return;
+    }
+    const canvasId = canvasMatch[1];
 
     // 마스터 프로세스에 캔버스 등록 알림
     process.send?.({
