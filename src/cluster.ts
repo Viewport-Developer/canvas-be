@@ -11,31 +11,24 @@ const WORKER_COUNT = Number(process.env.WORKER_COUNT);
 const canvasToWorker = new Map<string, number>();
 // 워커 ID → 연결 수 매핑
 const workerConnections = new Map<number, number>();
-// 워커 ID → 워커 포트 매핑
+// 워커 ID → Port 매핑
 const workerPorts = new Map<number, number>();
-// 워커 ID → ready 상태 매핑 (worker-ready 메시지를 받은 워커만 true)
-const workerReady = new Set<number>();
 
 if (cluster.isPrimary) {
   // 워커 리소스 정리 함수
   function cleanupWorkerResources(workerId: number) {
-    // 해당 워커의 canvas 매핑 제거
-    for (const [canvasId, wId] of canvasToWorker.entries()) {
-      if (wId === workerId) {
+    for (const [canvasId, workerId] of canvasToWorker.entries()) {
+      if (workerId === workerId) {
         canvasToWorker.delete(canvasId);
       }
     }
     workerConnections.delete(workerId);
     workerPorts.delete(workerId);
-    workerReady.delete(workerId);
   }
 
   // 워커 이벤트 핸들러 설정 함수
   function setupWorkerHandlers(worker: Worker, workerId: number) {
     worker.on("message", (msg: any) => {
-      if (msg.type === "worker-ready") {
-        workerReady.add(msg.workerId);
-      }
       if (msg.type === "canvas-registered") {
         canvasToWorker.set(msg.canvasId, msg.workerId);
       }
@@ -49,9 +42,7 @@ if (cluster.isPrimary) {
       }
     });
 
-    worker.on("exit", (code: number, signal: string) => {
-      console.error(`Worker ${workerId} exited with code ${code} and signal ${signal}`);
-
+    worker.on("exit", () => {
       // 리소스 정리
       cleanupWorkerResources(workerId);
 
@@ -65,7 +56,7 @@ if (cluster.isPrimary) {
       workerConnections.set(workerId, 0);
       workerPorts.set(workerId, newWorkerPort);
 
-      // 재시작된 워커에 핸들러 재등록
+      // 핸들러 재등록
       setupWorkerHandlers(newWorker, workerId);
     });
   }
@@ -81,17 +72,16 @@ if (cluster.isPrimary) {
     workerConnections.set(i, 0);
     workerPorts.set(i, workerPort);
 
-    // 워커에 이벤트 핸들러 설정
+    // 핸들러 등록
     setupWorkerHandlers(worker, i);
   }
 
-  // HTTP 서버 생성 (라우팅용)
+  // HTTP 서버 생성
   const server = http.createServer();
   const proxy = createProxyServer({});
 
-  // 프록시 에러 처리 (전역 핸들러)
+  // 프록시 에러 처리
   proxy.on("error", (err, req, socket) => {
-    console.error("Proxy error:", err.message);
     if (socket && !socket.destroyed) {
       socket.destroy();
     }
@@ -101,7 +91,7 @@ if (cluster.isPrimary) {
   server.on("upgrade", (request, socket, head) => {
     const url = request.url || "";
 
-    // URL 파싱: /canvas/{canvasId} 형식 검증
+    // URL 파싱
     const canvasMatch = url.match(/^\/canvas\/(.+)$/);
     if (!canvasMatch) {
       socket.destroy();
@@ -113,38 +103,23 @@ if (cluster.isPrimary) {
     let targetWorkerId: number;
 
     if (canvasToWorker.has(canvasId)) {
-      const mappedWorkerId = canvasToWorker.get(canvasId)!;
-      // 매핑된 워커가 ready 상태인지 확인
-      if (workerReady.has(mappedWorkerId) && workerPorts.has(mappedWorkerId)) {
-        targetWorkerId = mappedWorkerId;
-      } else {
-        // stale 매핑 제거하고 새 워커 선택
-        canvasToWorker.delete(canvasId);
-        const sortedWorkers = Array.from(workerConnections.entries())
-          .filter(([id]) => workerReady.has(id) && workerPorts.has(id))
-          .sort((a, b) => a[1] - b[1]);
-        if (sortedWorkers.length === 0) {
-          socket.destroy();
-          return;
-        }
-        targetWorkerId = sortedWorkers[0][0];
-      }
+      // 매핑된 워커 선택
+      targetWorkerId = canvasToWorker.get(canvasId)!;
     } else {
-      // ready 상태인 워커 중에서 연결 수가 가장 적은 워커 선택
-      const sortedWorkers = Array.from(workerConnections.entries())
-        .filter(([id]) => workerReady.has(id) && workerPorts.has(id))
-        .sort((a, b) => a[1] - b[1]);
+      // 연결 수가 가장 적은 워커 선택
+      const sortedWorkers = Array.from(workerConnections.entries()).sort((a, b) => a[1] - b[1]);
+
       if (sortedWorkers.length === 0) {
         socket.destroy();
         return;
       }
+
       targetWorkerId = sortedWorkers[0][0];
     }
 
     // 선택된 워커의 포트로 프록시
     const targetPort = workerPorts.get(targetWorkerId);
     if (!targetPort) {
-      console.error(`No port found for worker ${targetWorkerId}`);
       socket.destroy();
       return;
     }

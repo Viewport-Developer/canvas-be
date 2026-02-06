@@ -11,7 +11,7 @@ export function startWorker(workerId: number, port: number) {
   wss.on("connection", (ws, req) => {
     const url = req.url || "";
 
-    // URL 파싱: /canvas/{canvasId} 형식 검증
+    // URL 파싱
     const canvasMatch = url.match(/^\/canvas\/(.+)$/);
     if (!canvasMatch) {
       ws.close(1008, "Invalid URL format");
@@ -25,6 +25,8 @@ export function startWorker(workerId: number, port: number) {
       canvasId,
       workerId,
     });
+
+    // 열림 알림
     process.send?.({
       type: "connection-opened",
       workerId,
@@ -32,7 +34,7 @@ export function startWorker(workerId: number, port: number) {
 
     handleWebSocketConnection(ws, req);
 
-    // 연결 해제 시 알림
+    // 연결 해제 알림
     ws.on("close", () => {
       process.send?.({
         type: "connection-closed",
@@ -41,23 +43,30 @@ export function startWorker(workerId: number, port: number) {
     });
   });
 
+  // 서버 시작
   async function startServer() {
-    await connectMongoDB();
-    server.listen(port, () => {
-      process.send?.({
-        type: "worker-ready",
-        workerId,
+    try {
+      await connectMongoDB();
+
+      server.listen(port);
+
+      server.on("error", () => {
+        process.exit(1);
       });
-    });
+    } catch (error) {
+      process.exit(1);
+    }
   }
 
   startServer();
 
+  // 종료 처리
   process.on("SIGTERM", async () => {
     await disconnectMongoDB();
     server.close(() => process.exit(0));
   });
 
+  // 인터럽트 처리
   process.on("SIGINT", async () => {
     await disconnectMongoDB();
     server.close(() => process.exit(0));
