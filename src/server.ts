@@ -32,7 +32,7 @@ export function startWorker(workerId: number, port: number) {
       workerId,
     });
 
-    handleWebSocketConnection(ws, req);
+    handleWebSocketConnection(ws, req, canvasId);
 
     // 연결 해제 알림
     ws.on("close", () => {

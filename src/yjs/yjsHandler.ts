@@ -45,11 +45,7 @@ setPersistence({
 });
 
 // WebSocket 연결 처리
-export function handleWebSocketConnection(ws: any, req: any): void {
-  // URL에서 캔버스 ID 추출
-  const requestUrl = req.url;
-  const canvasId = requestUrl.slice(6);
-
+export function handleWebSocketConnection(ws: any, req: any, canvasId: string): void {
   // 연결이 들어오면 삭제 타이머 취소
   cancelDeleteTimer(canvasId);
 
