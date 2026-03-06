@@ -72,3 +72,5 @@ export function startWorker(workerId: number, port: number) {
     server.close(() => process.exit(0));
   });
 }
+
+console.log("Server started");
