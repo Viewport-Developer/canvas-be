@@ -79,7 +79,9 @@ jobs:
             pm2 delete "$NEW_APP" || true
 
             PORT="$NEW_PORT" WORKER_COUNT=2 NODE_ENV=production \
-              pm2 start ecosystem.config.js --only canvas-server --name "$NEW_APP" --update-env
+              pm2 start dist/cluster.js --name "$NEW_APP"
+
+            pm2 save
 
             HEALTH_OK=0
             for i in {1..15}; do
@@ -92,8 +94,10 @@ jobs:
 
             if [ "$HEALTH_OK" -ne 1 ]; then
               echo "Health check failed for port $NEW_PORT"
+              pm2 logs "$NEW_APP" --lines 100 || true
               pm2 stop "$NEW_APP" || true
               pm2 delete "$NEW_APP" || true
+              pm2 save
               exit 1
             fi
 
@@ -110,5 +114,6 @@ jobs:
             sleep "$DRAIN_SECONDS"
             pm2 stop "$OLD_APP" || true
             pm2 delete "$OLD_APP" || true
+            pm2 save
 
             ls -1dt "$RELEASES_DIR"/* | tail -n +6 | xargs -r rm -rf
