@@ -187,3 +187,5 @@ if (cluster.isPrimary) {
   const workerPort = Number(process.env.WORKER_PORT);
   startWorker(workerId, workerPort);
 }
+
+console.log("cluster.ts loaded");
