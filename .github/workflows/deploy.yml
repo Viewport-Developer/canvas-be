@@ -17,8 +17,98 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -euo pipefail
+
+            BASE_DIR="/home/ec2-user/apps/canvas-be"
+            RELEASES_DIR="$BASE_DIR/releases"
+            SHARED_DIR="$BASE_DIR/shared"
+            RUN_DIR="$SHARED_DIR/run"
+            ACTIVE_PORT_FILE="$RUN_DIR/active_port"
+            CURRENT_LINK="$BASE_DIR/current"
+
+            PORT_A=1234
+            PORT_B=1236
+
+            DRAIN_SECONDS=120
+
+            mkdir -p "$RELEASES_DIR" "$SHARED_DIR/logs" "$RUN_DIR"
+
+            if [ ! -f "$SHARED_DIR/.env" ]; then
+              if [ -f "/home/ec2-user/canvas-be/.env" ]; then
+                cp "/home/ec2-user/canvas-be/.env" "$SHARED_DIR/.env"
+              fi
+            fi
+
+            ACTIVE_PORT=""
+            if [ -f "$ACTIVE_PORT_FILE" ]; then
+              ACTIVE_PORT="$(cat "$ACTIVE_PORT_FILE" || true)"
+            fi
+            if [ "$ACTIVE_PORT" = "$PORT_A" ]; then
+              NEW_PORT="$PORT_B"
+              OLD_PORT="$PORT_A"
+            else
+              NEW_PORT="$PORT_A"
+              OLD_PORT="$PORT_B"
+            fi
+
+            RELEASE_NAME="$(date +%Y%m%d-%H%M%S)"
+            RELEASE_PATH="$RELEASES_DIR/$RELEASE_NAME"
+            mkdir -p "$RELEASE_PATH"
+
             cd /home/ec2-user/canvas-be
             git fetch origin
             git reset --hard origin/main
+            git clean -fd
+
+            rsync -a --delete \
+              --exclude node_modules \
+              --exclude .git \
+              /home/ec2-user/canvas-be/ "$RELEASE_PATH"/
+
+            if [ -f "$SHARED_DIR/.env" ]; then
+              ln -sfn "$SHARED_DIR/.env" "$RELEASE_PATH/.env"
+            fi
+
+            cd "$RELEASE_PATH"
             npm ci
-            pm2 restart canvas-server
+            npm run build
+
+            NEW_APP="canvas-$NEW_PORT"
+            OLD_APP="canvas-$OLD_PORT"
+
+            pm2 delete "$NEW_APP" || true
+
+            PORT="$NEW_PORT" WORKER_COUNT=2 NODE_ENV=production \
+              pm2 start ecosystem.config.js --only canvas-server --name "$NEW_APP" --update-env
+
+            HEALTH_OK=0
+            for i in {1..15}; do
+              if curl -fsS --max-time 5 "http://127.0.0.1:$NEW_PORT/health" >/dev/null; then
+                HEALTH_OK=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$HEALTH_OK" -ne 1 ]; then
+              echo "Health check failed for port $NEW_PORT"
+              pm2 stop "$NEW_APP" || true
+              pm2 delete "$NEW_APP" || true
+              exit 1
+            fi
+
+            UPSTREAM_FILE="/etc/nginx/conf.d/canvas-upstream.inc"
+            echo "upstream canvas_backend {
+              server 127.0.0.1:$NEW_PORT;
+            }" | sudo tee "$UPSTREAM_FILE" >/dev/null
+            sudo nginx -t
+            sudo nginx -s reload
+
+            echo "$NEW_PORT" > "$ACTIVE_PORT_FILE"
+            ln -sfn "$RELEASE_PATH" "$CURRENT_LINK"
+
+            sleep "$DRAIN_SECONDS"
+            pm2 stop "$OLD_APP" || true
+            pm2 delete "$OLD_APP" || true
+
+            ls -1dt "$RELEASES_DIR"/* | tail -n +6 | xargs -r rm -rf

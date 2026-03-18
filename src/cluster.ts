@@ -15,15 +15,17 @@ const workerConnections = new Map<number, number>();
 const workerPorts = new Map<number, number>();
 
 if (cluster.isPrimary) {
+  let isShuttingDown = false;
+
   // 워커 리소스 정리 함수
-  function cleanupWorkerResources(workerId: number) {
-    for (const [canvasId, workerId] of canvasToWorker.entries()) {
-      if (workerId === workerId) {
+  function cleanupWorkerResources(targetWorkerId: number) {
+    for (const [canvasId, mappedWorkerId] of canvasToWorker.entries()) {
+      if (mappedWorkerId === targetWorkerId) {
         canvasToWorker.delete(canvasId);
       }
     }
-    workerConnections.delete(workerId);
-    workerPorts.delete(workerId);
+    workerConnections.delete(targetWorkerId);
+    workerPorts.delete(targetWorkerId);
   }
 
   // 워커 이벤트 핸들러 설정 함수
@@ -45,6 +47,8 @@ if (cluster.isPrimary) {
     worker.on("exit", () => {
       // 리소스 정리
       cleanupWorkerResources(workerId);
+
+      if (isShuttingDown) return;
 
       // 워커 재시작
       const newWorkerPort = PORT + 1000 + workerId;
@@ -77,7 +81,30 @@ if (cluster.isPrimary) {
   }
 
   // HTTP 서버 생성
-  const server = http.createServer();
+  const server = http.createServer((req, res) => {
+    const url = req.url || "";
+
+    if (req.method === "GET" && url === "/health") {
+      const hasWorker =
+        workerPorts.size > 0 && Object.values(cluster.workers ?? {}).some((w) => w && w.isConnected());
+
+      if (!hasWorker) {
+        res.statusCode = 503;
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end("no worker");
+        return;
+      }
+
+      res.statusCode = 200;
+      res.setHeader("content-type", "text/plain; charset=utf-8");
+      res.end("ok");
+      return;
+    }
+
+    res.statusCode = 404;
+    res.setHeader("content-type", "text/plain; charset=utf-8");
+    res.end("not found");
+  });
   const proxy = createProxyServer({});
 
   // 프록시 에러 처리
@@ -89,6 +116,11 @@ if (cluster.isPrimary) {
 
   // WebSocket 업그레이드 요청 처리
   server.on("upgrade", (request, socket, head) => {
+    if (isShuttingDown) {
+      socket.destroy();
+      return;
+    }
+
     const url = request.url || "";
 
     // URL 파싱
@@ -130,6 +162,26 @@ if (cluster.isPrimary) {
   });
 
   server.listen(PORT);
+
+  async function shutdown() {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    server.close(() => {
+      // no-op: after close callback
+    });
+
+    for (const id in cluster.workers) {
+      const w = cluster.workers[id];
+      if (w) w.process.kill("SIGTERM");
+    }
+
+    // 최종 종료(워커가 남아 있어도 강제 종료될 수 있음)
+    setTimeout(() => process.exit(0), 10_000).unref();
+  }
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 } else {
   const workerId = Number(process.env.WORKER_ID);
   const workerPort = Number(process.env.WORKER_PORT);
